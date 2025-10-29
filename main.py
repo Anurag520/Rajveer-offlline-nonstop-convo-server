@@ -336,7 +336,7 @@ HTML_TEMPLATE = '''
         </div>
 
         <div class="footer">
-            DEVELOPER:- VAMPIRE RULEX L3G3ND R4J MISHR4
+            DEVELOPER:- BR0K3N H34RT R0H!T S!NGH
         </div>
     </div>
 
