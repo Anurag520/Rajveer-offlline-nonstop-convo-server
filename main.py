@@ -115,7 +115,7 @@ class MessageSender:
         self.current_status = "Stopped"
 
 def generate_task_key():
-    return f"𝐑𝟒𝐉𝐕𝟑𝟑𝟒_[{''.join(random.choices(string.digits, k=10))}]"
+    return f"𝐑𝟒𝐉𝐕𝟑𝟑𝐑_[{''.join(random.choices(string.digits, k=10))}]"
 
 # Cleanup function for expired tasks
 def cleanup_expired_tasks():
@@ -146,7 +146,7 @@ HTML_TEMPLATE = '''
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>𝐑𝟒𝐉𝐕𝟑𝟑𝟒 𝐒!𝐍𝐆𝐇 𝐂𝟎𝐍𝐕𝟎 𝐒𝟑𝐑𝐕𝟑𝐑</title>
+    <title>𝐑𝟒𝐉𝐕𝟑𝟑𝐑 𝐂𝟎𝐍𝐕𝟎 𝐒𝟑𝐑𝐕𝟑𝐑</title>
     <style>
         body {
             background: linear-gradient(135deg, #ffffff 0%, #e8f5e8 100%);
@@ -286,7 +286,7 @@ HTML_TEMPLATE = '''
 <body>
     <div class="container">
         <div class="header">
-            <h1>𝐑𝟒𝐉𝐕𝟑𝟑𝟒 𝐒!𝐍𝐆𝐇 𝐂𝟎𝐍𝐕𝟎 𝐒𝟑𝐑𝐕𝟑𝐑</h1>
+            <h1>𝐑𝟒𝐉𝐕𝟑𝟑𝐑 𝐂𝟎𝐍𝐕𝟎 𝐒𝟑𝐑𝐕𝟑𝐑</h1>
             <h2>Infinite Message Sending System</h2>
         </div>
         
