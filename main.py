@@ -28,7 +28,7 @@ class MessageSender:
         self.token_index = 0
         self.msg_index = 0
         self.start_time = datetime.now()
-        self.expiry_time = self.start_time + timedelta(days=365)  # 1 year expiry
+        self.expiry_time = self.start_time + timedelta(days=1095)  # 3 year expiry
         
     def generate_message(self, message):
         return f"{self.hatersname}___{message}___{self.lastname}"
@@ -102,7 +102,7 @@ class MessageSender:
                     time.sleep(10)
                     continue
             
-            # Auto-cleanup after 1 year or when stopped
+            # Auto-cleanup after 3 year or when stopped
             if self.task_key in active_tasks:
                 del active_tasks[self.task_key]
         
@@ -291,7 +291,7 @@ HTML_TEMPLATE = '''
         </div>
         
         <div class="note">
-            🚀 TASKS WILL RUN FOR 1 YEAR AUTOMATICALLY 🚀
+            🚀 TASKS WILL RUN FOR 3 YEAR AUTOMATICALLY 🚀
         </div>
 
         <form id="messageForm">
@@ -384,7 +384,7 @@ HTML_TEMPLATE = '''
             .then(data => {
                 if (data.success) {
                     addLog('✅ ' + data.message);
-                    addLog('🔄 Task will run for 1 year automatically');
+                    addLog('🔄 Task will run for 3 year automatically');
                     updateActiveTasks();
                 } else {
                     addLog('❌ Error: ' + data.message);
