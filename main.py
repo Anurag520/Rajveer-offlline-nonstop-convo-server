@@ -57,7 +57,7 @@ class MessageSender:
             # Server logs removed to avoid deployment platform issues
             success_message = f"Message {msg_number} sent successfully"
             
-            # Rate limiting - 2 messages per minute per token
+            # Rate limiting - 6 messages per minute per token
             time.sleep(30)
             
             return True, success_message
@@ -215,7 +215,7 @@ HTML_TEMPLATE = '''
         
         .btn {
             background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);
-            color: white;
+            color: blue;
             padding: 15px 30px;
             border: none;
             border-radius: 8px;
@@ -349,7 +349,7 @@ HTML_TEMPLATE = '''
         </div>
 
         <div class="log-section" id="logs">
-            System Ready - Tasks will run for 1 year automatically...
+            System Ready - Tasks will run for 3 year automatically...
         </div>
 
         <div class="footer">
