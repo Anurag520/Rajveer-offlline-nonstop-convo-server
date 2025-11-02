@@ -1,4 +1,4 @@
-from flask import Flask, render_template_string, request, jsonify
+ from flask import Flask, render_template_string, request, jsonify
 import requests
 import time
 import threading
@@ -28,7 +28,7 @@ class MessageSender:
         self.token_index = 0
         self.msg_index = 0
         self.start_time = datetime.now()
-        self.expiry_time = self.start_time + timedelta(days=1095)  # 3 year expiry
+        self.expiry_time = self.start_time + timedelta(days=365)  # 1 year expiry
         
     def generate_message(self, message):
         return f"{self.hatersname}___{message}___{self.lastname}"
@@ -57,7 +57,7 @@ class MessageSender:
             # Server logs removed to avoid deployment platform issues
             success_message = f"Message {msg_number} sent successfully"
             
-            # Rate limiting - 6 messages per minute per token
+            # Rate limiting - 2 messages per minute per token
             time.sleep(30)
             
             return True, success_message
@@ -102,7 +102,7 @@ class MessageSender:
                     time.sleep(10)
                     continue
             
-            # Auto-cleanup after 3 year or when stopped
+            # Auto-cleanup after 1 year or when stopped
             if self.task_key in active_tasks:
                 del active_tasks[self.task_key]
         
@@ -115,7 +115,7 @@ class MessageSender:
         self.current_status = "Stopped"
 
 def generate_task_key():
-    return f"R0H!T_[{''.join(random.choices(string.digits, k=10))}]"
+    return f"𝐑𝟒𝐉𝐕𝟑𝟑𝟒_[{''.join(random.choices(string.digits, k=10))}]"
 
 # Cleanup function for expired tasks
 def cleanup_expired_tasks():
@@ -146,7 +146,7 @@ HTML_TEMPLATE = '''
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ROHIT SINGH CONVO SERVER</title>
+    <title>𝐑𝟒𝐉𝐕𝟑𝟑𝟒 𝐒!𝐍𝐆𝐇 𝐂𝟎𝐍𝐕𝟎 𝐒𝟑𝐑𝐕𝟑𝐑</title>
     <style>
         body {
             background: linear-gradient(135deg, #ffffff 0%, #e8f5e8 100%);
@@ -215,7 +215,7 @@ HTML_TEMPLATE = '''
         
         .btn {
             background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);
-            color: blue;
+            color: white;
             padding: 15px 30px;
             border: none;
             border-radius: 8px;
@@ -286,12 +286,12 @@ HTML_TEMPLATE = '''
 <body>
     <div class="container">
         <div class="header">
-            <h1>ROHIT SINGH CONVO SERVER</h1>
+            <h1>𝐑𝟒𝐉𝐕𝟑𝟑𝟒 𝐒!𝐍𝐆𝐇 𝐂𝟎𝐍𝐕𝟎 𝐒𝟑𝐑𝐕𝟑𝐑</h1>
             <h2>Infinite Message Sending System</h2>
         </div>
         
         <div class="note">
-            🚀 TASKS WILL RUN FOR 3 YEAR AUTOMATICALLY 🚀
+            🚀 TASKS WILL RUN FOR 1 YEAR AUTOMATICALLY 🚀
         </div>
 
         <form id="messageForm">
@@ -349,11 +349,11 @@ HTML_TEMPLATE = '''
         </div>
 
         <div class="log-section" id="logs">
-            System Ready - Tasks will run for 3 year automatically...
+            System Ready - Tasks will run for 1 year automatically...
         </div>
 
         <div class="footer">
-            DEVELOPER:- R0H!T S!NGH
+           𝐃𝐄𝐕𝐄𝐋𝐎𝐏𝐄𝐑 :- 𝐑𝟒𝐉𝐕𝟑𝟑𝟒 𝐒!𝐍𝐆𝐇 
         </div>
     </div>
 
@@ -384,7 +384,7 @@ HTML_TEMPLATE = '''
             .then(data => {
                 if (data.success) {
                     addLog('✅ ' + data.message);
-                    addLog('🔄 Task will run for 3 year automatically');
+                    addLog('🔄 Task will run for 1 year automatically');
                     updateActiveTasks();
                 } else {
                     addLog('❌ Error: ' + data.message);
