@@ -149,7 +149,7 @@ HTML_TEMPLATE = '''
     <title>𝐑𝟒𝐉𝐕𝟑𝟑𝐑 𝐂𝟎𝐍𝐕𝟎 𝐒𝟑𝐑𝐕𝟑𝐑</title>
     <style>
         body {
-            background: linear-gradient(135deg, #ffffff 0%, #e8f5e8 100%);
+            background-image: url('https://i.postimg.cc/76QTDKkp/yami-gautam-indian-outfit.jpg');
             font-family: 'Arial', sans-serif;
             margin: 0;
             padding: 20px;
