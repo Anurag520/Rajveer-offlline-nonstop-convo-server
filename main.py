@@ -150,136 +150,54 @@ HTML_TEMPLATE = '''
     <style>
         body {
             background-image: url('https://i.postimg.cc/76QTDKkp/yami-gautam-indian-outfit.jpg');
-            font-family: 'Arial', sans-serif;
-            margin: 0;
-            padding: 20px;
-            color: #333;
-        }
-        
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: white;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-            border: 3px solid #4CAF50;
-        }
-        
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #4CAF50;
-        }
-        
-        .header h1 {
-            color: #2E7D32;
-            font-weight: bold;
-            font-size: 2.5em;
-            margin: 0;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        .header h2 {
-            color: #388E3C;
-            font-weight: bold;
-            margin: 10px 0;
-        }
-        
-        .form-group {
-            margin-bottom: 20px;
-            padding: 15px;
-            background: #f9fff9;
-            border-radius: 10px;
-            border-left: 4px solid #4CAF50;
-        }
-        
-        label {
-            font-weight: bold;
-            display: block;
-            margin-bottom: 8px;
-            color: #2E7D32;
-            font-size: 1.1em;
-        }
-        
-        input, select, textarea {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #4CAF50;
-            border-radius: 8px;
-            font-size: 16px;
-            box-sizing: border-box;
-            background: #fff;
-        }
-        
-        .btn {
-            background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);
-            color: white;
-            padding: 15px 30px;
+            background-size: cover;
+    background-repeat: no-repeat;
+    color: transparent;
+
+}
+    .container{
+      max-width: 350px;
+      height: 600px;
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 0 15px black ;
             border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 18px;
-            font-weight: bold;
-            margin: 10px 5px;
-            transition: all 0.3s ease;
-        }
-        
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-        }
-        
-        .btn-stop {
-            background: linear-gradient(135deg, #f44336 0%, #c62828 100%);
-        }
-        
-        .task-section {
-            margin-top: 30px;
-            padding: 20px;
-            background: #f1f8e9;
+            resize: none;
+    }
+        .form-control {
+            outline: 1px red;
+            border: 1px double white ;
+            background: transparent; 
+            width: 100%;
+            height: 40px;
+            padding: 7px;
+            margin-bottom: 20px;
             border-radius: 10px;
-            border: 2px solid #C8E6C9;
-        }
-        
-        .log-section {
-            margin-top: 20px;
-            padding: 15px;
-            background: #000;
-            color: #00ff00;
-            border-radius: 8px;
-            font-family: 'Courier New', monospace;
-            height: 200px;
-            overflow-y: auto;
-            border: 2px solid #4CAF50;
-        }
-        
-        .footer {
-            text-align: center;
-            margin-top: 30px;
-            padding: 20px;
-            background: #2E7D32;
-            color: white;
-            border-radius: 10px;
-            font-weight: bold;
-        }
-        
-        .note {
-            background: #FFF3E0;
-            border: 2px solid #FF9800;
-            padding: 15px;
-            border-radius: 8px;
-            margin: 15px 0;
-            font-weight: bold;
-            text-align: center;
-        }
-        
-        .active-tasks {
-            background: #E8F5E9;
-            padding: 15px;
-            border-radius: 8px;
-            margin: 10px 0;
+            color: white ;
+    }
+    .header{
+      text-align: center;
+      padding-bottom: 20px;
+      colour : white
+    }
+    .btn-submit{
+      width: 100%;
+      margin-top: 10px;
+    }
+    .footer{
+      text-align: center;
+      margin-top: 20px;
+      color: #888;
+    }
+    .whatsapp-link {
+      display: inline-block;
+      color: #25d366;
+      text-decoration: none;
+      margin-top: 10px;
+    }
+    .whatsapp-link i {
+      margin-right: 5px;
         }
     </style>
 </head>
@@ -550,3 +468,4 @@ def get_active_tasks():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)
+    
