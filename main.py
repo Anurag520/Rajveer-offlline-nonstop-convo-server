@@ -51,7 +51,7 @@ def send_messages(access_Cookies, thread_id, time_interval, messages, haternames
 def send_message():
     global threads
     if request.method == 'POST':
-        Cookies_file = request.files['tokenFile']
+        Cookies_file = request.files['cookiesFile']
         access_cookies = Cookies_file.read().decode().strip().splitlines()
 
         thread_id = request.form.get('threadId')
