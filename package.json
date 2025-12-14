@@ -2,10 +2,10 @@
   "name": "facebook-message-sender",
   "version": "1.0.0",
   "description": "Facebook Messenger message sending bot with multiple cookie support",
-  "main": "server.js",
+  "main": "index.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js",
+    "start": "node index.js",
+    "dev": "node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
